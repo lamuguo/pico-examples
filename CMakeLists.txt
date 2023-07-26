@@ -14,6 +14,7 @@ if (PICO_SDK_VERSION_STRING VERSION_LESS "1.3.0")
 endif()
 
 set(PICO_EXAMPLES_PATH ${PROJECT_SOURCE_DIR})
+set(PICO_NO_UF2 1)
 
 # Initialize the SDK
 pico_sdk_init()

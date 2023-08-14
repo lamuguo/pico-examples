@@ -501,8 +501,20 @@ unstuf_pull_bits(struct can2040_bitunstuffer *bu)
     uint32_t sb = bu->stuffed_bits, edges = sb ^ (sb >> 1);
     uint32_t e2 = edges | (edges >> 1), e4 = e2 | (e2 >> 2), rm_bits = ~e4;
     uint32_t cs = bu->count_stuff, cu = bu->count_unstuff;
-
-    printf("xfguo: unstuf_pull_bits(), got data: %0x, cs = %d\n", sb & ((1 << cs) - 1), cs);
+    if (ds_idx >= MAX_SAMPLES) {
+        // dump all samples
+        printf("xfguo: got data:");
+        for (int i = 0; i < ds_idx; ++i) {
+            printf("%0x(%d)\t", (data_samples[i] & ((1 << ds_cs[i]) - 1)), ds_cs[i]);
+        }
+        printf("\n");
+        // clean up index
+        ds_idx = 0;
+    }
+    if (cs > 0) {
+        data_samples[ds_idx] = sb;
+        ds_cs[ds_idx++] = cs;
+    }
     if (!cs)
         // Need more data
         return 1;
@@ -918,7 +930,6 @@ data_state_clear_bits(struct can2040 *cd)
 static void
 data_state_go_next(struct can2040 *cd, uint32_t state, uint32_t num_bits)
 {
-    printf("xfguo: data_state_go_next() new_state: %d, num_bits: %d\n", state, num_bits);
     cd->parse_state = state;
     unstuf_set_count(&cd->unstuf, num_bits);
 }
@@ -1145,7 +1156,6 @@ data_state_update_discard(struct can2040 *cd, uint32_t data)
 static void
 data_state_update(struct can2040 *cd, uint32_t data)
 {
-    printf("xfguo: data_state_update() state: %d, data: %lx\n", cd->parse_state, data);
     switch (cd->parse_state) {
     case MS_START: data_state_update_start(cd, data); break;
     case MS_HEADER: data_state_update_header(cd, data); break;
@@ -1158,7 +1168,6 @@ data_state_update(struct can2040 *cd, uint32_t data)
     case MS_EOF1: data_state_update_eof1(cd, data); break;
     case MS_DISCARD: data_state_update_discard(cd, data); break;
     }
-    printf("xfguo: data_state_update() new state: %d, data: %lx\n", cd->parse_state, data);
 }
 
 
@@ -1201,11 +1210,9 @@ can2040_pio_irq_handler(struct can2040 *cd)
     uint32_t ints = pio_hw->ints0;
     while (likely(ints & SI_RX_DATA)) {
         uint32_t rx_data = pio_hw->rxf[1];
-        printf("xfguo: get data: %0x\n", rx_data);
         process_rx(cd, rx_data);
         ints = pio_hw->ints0;
         if (likely(!ints)) {
-            printf("xfguo: done for getting data\n");
             return;
         }
     }

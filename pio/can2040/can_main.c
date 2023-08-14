@@ -10,7 +10,7 @@
 
 #include "can2040.h"
 
-#define CONFIG_CANBUS_FREQUENCY 500000
+#define CONFIG_CANBUS_FREQUENCY 50000
 #define CONFIG_RP2040_CANBUS_GPIO_RX    19  // GPIO 26 <=> CAN TX
 #define CONFIG_RP2040_CANBUS_GPIO_TX    27  // GPIO 27 <=> CAN RX
 
@@ -23,8 +23,12 @@ static struct can2040 cbus;
 static void
 can2040_cb(struct can2040 *cd, uint32_t notify, struct can2040_msg *msg)
 {
-    printf("xfguo: can2040_cb(), notify: %d, msg: {id: %0x, dlc: %0x, data: %0x, data32: %0x}\n",
-           notify, msg->id, msg->dlc, msg->data, msg->data32);
+    // for (int i = 0; i < ds_idx; ++i) {
+    //     printf("%0x\t", data_samples[i] & 0x3ff);
+    // }
+    // ds_idx = 0;
+    // printf("\nxfguo: can2040_cb(), notify: %d, msg: {id: %0x, dlc: %0x, data: %0x, data32: %0x}\n",
+    //        notify, msg->id, msg->dlc, msg->data, msg->data32);
 }
 
 uint32_t
@@ -37,7 +41,6 @@ get_pclock_frequency(uint32_t reset_bit)
 void
 PIOx_IRQHandler(void)
 {
-    printf("xfguo: PIOx_IRQHandler()\n");
     can2040_pio_irq_handler(&cbus);
 }
 

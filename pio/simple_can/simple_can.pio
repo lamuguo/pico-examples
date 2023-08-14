@@ -1,0 +1,7 @@
+.program simple_can
+.wrap_target
+    nop [5]
+    in pins, 1
+    nop [2]
+    push
+.wrap

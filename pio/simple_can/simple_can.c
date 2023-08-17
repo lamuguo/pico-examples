@@ -1,62 +1,71 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
-#include "hardware/pio.h"
 #include "hardware/clocks.h"
+#include "hardware/gpio.h"
+#include "hardware/pio.h"
+#include "simple_can.pio.h" // 这是你的PIO程序的头文件，名字可能有所不同
 
-#include "simple_can.pio.h"
+#define SAMPLE_SIZE 1024
+#define PIN_GP19 19
 
-uint irq_num;
+volatile uint32_t data_samples[SAMPLE_SIZE];
+volatile int64_t time_samples[SAMPLE_SIZE];
+volatile uint sample_count = 0;
 
-// 为了设置PIO时钟为5MHz
-void set_pio_clock(PIO pio, uint sm, int pio_freq) {
-    uint32_t src_freq = clock_get_hz(clk_sys); // 获取系统时钟频率
-    float div = (float)src_freq / (float)pio_freq; // 计算分频值
-    pio_sm_set_clkdiv(pio, sm, div);  // 设置状态机的时钟分频
-}
+static PIO pio;
+static uint sm;
 
-void simple_can_irq_handler() {
-    // 处理中断，并从RX FIFO读取数据，然后可能将数据发送到其他地方
-    uint data = pio_sm_get(pio0, 0); // 从状态机0的RX FIFO读取数据
-    printf("Data: %u\n", data);  // 仅为示例，将数据打印到控制台
+void pio_irq_handler() {
+    if (sample_count == SAMPLE_SIZE) {
+        printf("data\n");
+        for (int i = 0; i < SAMPLE_SIZE; ++i) {
+            printf("%llu - %u\n", time_samples[i], data_samples[i] >> 31);
+        }
+        printf("\n");
+        sample_count = 0;
+    }
+
+    while (!pio_sm_is_rx_fifo_empty(pio, sm)) { // 检查FIFO是否有数据
+        data_samples[sample_count] = pio_sm_get(pio0, 0);
+        time_samples[sample_count] = to_us_since_boot(get_absolute_time());
+        sample_count++;
+    }
 }
 
 int main() {
-    // 初始化
     stdio_init_all();
-    printf("xfguo: start simple_can\n");
+    printf("Started reading from GPIO\n");
 
-    PIO pio = pio0;
-    uint sm = 0;
+    pio = pio0;
     uint offset = pio_add_program(pio, &simple_can_program);
 
-    pio_sm_clear_fifos(pio, sm);
+    // 初始化SM
+    sm = pio_claim_unused_sm(pio, true);
 
-    // PIO状态机配置
-    pio_sm_config c = simple_can_program_get_default_config(offset);
-    pio_sm_set_in_pins(pio, sm, 19);
-    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_consecutive_pindirs(pio, sm, PIN_GP19, 1, false);
+    pio_gpio_init(pio, PIN_GP19);
+    gpio_pull_up(PIN_GP19);
+    pio_sm_config config = simple_can_program_get_default_config(offset);
+    sm_config_set_in_pins(&config, PIN_GP19); // for WAIT, IN
+    sm_config_set_jmp_pin(&config, PIN_GP19); // for JMP
+    // Shift to right, autopush disabled
+    sm_config_set_in_shift(&config, true, false, 32);
 
+    float div = (float)clock_get_hz(clk_sys) / (2 * 50000);
+    sm_config_set_clkdiv(&config, div);
+
+    // SM transmits 1 bit per 8 execution cycles.
+    pio_sm_init(pio, sm, offset, &config);
     pio_sm_set_enabled(pio, sm, true);
 
-    // 设置PIO时钟为5MHz
-    set_pio_clock(pio, sm, 5000000);
+    irq_add_shared_handler(PIO0_IRQ_0, pio_irq_handler, PICO_SHARED_IRQ_HANDLER_HIGHEST_ORDER_PRIORITY);
+    irq_set_enabled(PIO0_IRQ_0, true);
 
-    // 配置中断
-    irq_num = PIO0_IRQ_0 + sm;
-    irq_clear(irq_num);
-    irq_set_exclusive_handler(irq_num, simple_can_irq_handler);
-    irq_set_priority(irq_num, 1);
-    irq_set_enabled(irq_num, true);
-    pio_set_irq0_source_enabled(pio, PIO_INTR_SM0_RXNEMPTY_BITS + sm, true);
+    // 确保使用正确的中断源名称。
+    pio_set_irq0_source_enabled(pio, pis_sm0_rx_fifo_not_empty + sm, true);
 
-    while (true) {
-        uint32_t res = 0;
-        for (int i = 0; i < 8; ++i) {
-            uint32_t data = pio_sm_get_blocking(pio, sm);
-            res = (res << 1) | (data & 0x80000000 ? 1 : 0);
-        }
-        printf("result: %0x\n", res);
-
-        sleep_ms(100);
+    while (1) {
+        // 主程序循环，可能包含其他代码
+        sleep_ms(5);
     }
 }

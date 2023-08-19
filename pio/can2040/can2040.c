@@ -15,6 +15,7 @@
 #include "hardware/structs/padsbank0.h" // padsbank0_hw
 #include "hardware/structs/pio.h" // pio0_hw
 #include "hardware/structs/resets.h" // RESETS_RESET_PIO0_BITS
+#include "pico/time.h"
 
 
 /****************************************************************
@@ -501,20 +502,6 @@ unstuf_pull_bits(struct can2040_bitunstuffer *bu)
     uint32_t sb = bu->stuffed_bits, edges = sb ^ (sb >> 1);
     uint32_t e2 = edges | (edges >> 1), e4 = e2 | (e2 >> 2), rm_bits = ~e4;
     uint32_t cs = bu->count_stuff, cu = bu->count_unstuff;
-    if (ds_idx >= MAX_SAMPLES) {
-        // dump all samples
-        printf("xfguo: got data:");
-        for (int i = 0; i < ds_idx; ++i) {
-            printf("%0x(%d)\t", (data_samples[i] & ((1 << ds_cs[i]) - 1)), ds_cs[i]);
-        }
-        printf("\n");
-        // clean up index
-        ds_idx = 0;
-    }
-    if (cs > 0) {
-        data_samples[ds_idx] = sb;
-        ds_cs[ds_idx++] = cs;
-    }
     if (!cs)
         // Need more data
         return 1;
@@ -1181,6 +1168,18 @@ process_rx(struct can2040 *cd, uint32_t rx_data)
 {
     unstuf_add_bits(&cd->unstuf, rx_data, PIO_RX_WAKE_BITS);
     cd->raw_bit_count += PIO_RX_WAKE_BITS;
+    if (ds_idx >= MAX_SAMPLES) {
+        // dump all samples
+        printf("xfguo: got data:\n");
+        for (int i = 0; i < ds_idx; ++i) {
+            printf("%u %0x\n", time_samples[i], data_samples[i]);
+        }
+        printf("\n");
+        // clean up index
+        ds_idx = 0;
+    }
+    data_samples[ds_idx] = rx_data;
+    time_samples[ds_idx++] = to_us_since_boot(get_absolute_time());
 
     // undo bit stuffing
     for (;;) {

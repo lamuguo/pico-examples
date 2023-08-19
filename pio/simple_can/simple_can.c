@@ -5,7 +5,7 @@
 #include "hardware/pio.h"
 #include "simple_can.pio.h" // 这是你的PIO程序的头文件，名字可能有所不同
 
-#define SAMPLE_SIZE 1024
+#define SAMPLE_SIZE 128
 #define PIN_GP19 19
 
 volatile uint32_t data_samples[SAMPLE_SIZE];
@@ -19,7 +19,7 @@ void pio_irq_handler() {
     if (sample_count == SAMPLE_SIZE) {
         printf("data\n");
         for (int i = 0; i < SAMPLE_SIZE; ++i) {
-            printf("%llu - %u\n", time_samples[i], data_samples[i] >> 31);
+            printf("%llu - %0x\n", time_samples[i], data_samples[i]);
         }
         printf("\n");
         sample_count = 0;
@@ -49,9 +49,9 @@ int main() {
     sm_config_set_in_pins(&config, PIN_GP19); // for WAIT, IN
     sm_config_set_jmp_pin(&config, PIN_GP19); // for JMP
     // Shift to right, autopush disabled
-    sm_config_set_in_shift(&config, true, false, 32);
+    sm_config_set_in_shift(&config, false, true, 32);
 
-    float div = (float)clock_get_hz(clk_sys) / (2 * 50000);
+    float div = (float)clock_get_hz(clk_sys) / (1 * 50000);  // 1 instruction in PIO, 50KHz for CAN.
     sm_config_set_clkdiv(&config, div);
 
     // SM transmits 1 bit per 8 execution cycles.

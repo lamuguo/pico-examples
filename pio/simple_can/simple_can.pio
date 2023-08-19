@@ -1,5 +1,4 @@
 .program simple_can
 .wrap_target
     IN pins, 1       ; 从PIN_GP19读取1个bit
-    PUSH          ; 推送到FIFO
 .wrap

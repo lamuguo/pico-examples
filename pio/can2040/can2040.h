@@ -74,12 +74,12 @@ struct can2040 {
     uint32_t tx_pull_pos, tx_push_pos;
     struct can2040_transmit tx_queue[4];
 };
-
-// For debug (xfguo)
-#define MAX_SAMPLES 1000
-static uint32_t ds_idx = 0;
-static uint32_t data_samples[MAX_SAMPLES];
-static uint32_t time_samples[MAX_SAMPLES];
-//static uint ds_cs[MAX_SAMPLES];
+//
+//// For debug (xfguo)
+//#define MAX_SAMPLES 128
+//static uint32_t idx = 0;
+//static struct can2040_bitunstuffer before_unstuff[MAX_SAMPLES];
+//static struct can2040_bitunstuffer after_unstuff[MAX_SAMPLES];
+//static int ret_vals[MAX_SAMPLES];
 
 #endif // can2040.h

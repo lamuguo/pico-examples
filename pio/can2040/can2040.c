@@ -4,6 +4,7 @@
 //
 // This file may be distributed under the terms of the GNU GPLv3 license.
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdint.h> // uint32_t
 #include <string.h> // memset
@@ -17,6 +18,32 @@
 #include "hardware/structs/resets.h" // RESETS_RESET_PIO0_BITS
 #include "pico/time.h"
 
+// For debug (xfguo)
+// It needs 16K memory, and please be careful no more than 127 chars in one line.
+#define MAX_SAMPLES 128
+#define MAX_LOG_LENGTH 128
+
+char logs[MAX_SAMPLES][MAX_LOG_LENGTH];
+int log_idx = 0;
+
+// Will implement %b for binary in the future.
+void xprintf(const char *format, ...) {
+//    if (log_idx >= MAX_SAMPLES) {
+//        for (int i = 0; i < log_idx; ++i) {
+//            printf("%s", logs[i]);
+//        }
+//        memset(logs, 0, sizeof(logs));
+//        log_idx = 0;
+//    }
+//
+//    va_list args;
+//    va_start(args, format);
+//    // 将格式化的输出存储在logs[log_idx]
+//    vsnprintf(logs[log_idx], MAX_LOG_LENGTH, format, args);
+//    va_end(args);
+//
+//    log_idx++;
+}
 
 /****************************************************************
  * rp2040 and low-level helper functions
@@ -1143,6 +1170,9 @@ data_state_update_discard(struct can2040 *cd, uint32_t data)
 static void
 data_state_update(struct can2040 *cd, uint32_t data)
 {
+    struct can2040_msg *tt = &cd->parse_msg;
+    xprintf("%d, data: %x, msg: (%0x, %0x, %0x, %0x)\n", cd->parse_state, data,
+            tt->id, tt->dlc, tt->data32[0], tt->data32[1]);
     switch (cd->parse_state) {
     case MS_START: data_state_update_start(cd, data); break;
     case MS_HEADER: data_state_update_header(cd, data); break;
@@ -1168,26 +1198,25 @@ process_rx(struct can2040 *cd, uint32_t rx_data)
 {
     unstuf_add_bits(&cd->unstuf, rx_data, PIO_RX_WAKE_BITS);
     cd->raw_bit_count += PIO_RX_WAKE_BITS;
-    if (ds_idx >= MAX_SAMPLES) {
-        // dump all samples
-        printf("xfguo: got data:\n");
-        for (int i = 0; i < ds_idx; ++i) {
-            printf("%u %0x\n", time_samples[i], data_samples[i]);
-        }
-        printf("\n");
-        // clean up index
-        ds_idx = 0;
-    }
-    data_samples[ds_idx] = rx_data;
-    time_samples[ds_idx++] = to_us_since_boot(get_absolute_time());
 
     // undo bit stuffing
     for (;;) {
+        const struct can2040_bitunstuffer *tt = &cd->unstuf;
+        xprintf("before stuf/unstuf: %0x(%0x, %0x) / %0x(%0x, %0x)\n",
+                tt->stuffed_bits & ((0x1 << tt->count_stuff) - 1), tt->stuffed_bits, tt->count_stuff,
+                (tt->unstuffed_bits >> tt->count_unstuff) & ((0x1 << (32 - tt->count_unstuff)) - 1), tt->unstuffed_bits, tt->count_unstuff);
         int ret = unstuf_pull_bits(&cd->unstuf);
+        tt = &cd->unstuf;
+        xprintf("after stuf/unstuf: %0x(%0x, %0x) / %0x(%0x, %0x), ret = %d\n",
+                tt->stuffed_bits & ((0x1 << tt->count_stuff) - 1), tt->stuffed_bits, tt->count_stuff,
+                (tt->unstuffed_bits >> tt->count_unstuff) & ((0x1 << (32 - tt->count_unstuff)) - 1), tt->unstuffed_bits, tt->count_unstuff,
+                ret);
         if (likely(ret > 0)) {
             // Need more data
             break;
-        } else if (likely(!ret)) {
+        }
+        xprintf("unstuf res: %d, state: %d, unstuffed_bits: %x\n", ret, cd->parse_state, cd->unstuf.unstuffed_bits);
+        if (likely(!ret)) {
             // Pulled the next field - process it
             data_state_update(cd, cd->unstuf.unstuffed_bits);
         } else {

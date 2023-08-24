@@ -10,7 +10,7 @@
 
 #include "can2040.h"
 
-#define CONFIG_CANBUS_FREQUENCY 50000
+#define CONFIG_CANBUS_FREQUENCY 10000
 #define CONFIG_RP2040_CANBUS_GPIO_RX    19  // GPIO 26 <=> CAN TX
 #define CONFIG_RP2040_CANBUS_GPIO_TX    27  // GPIO 27 <=> CAN RX
 
@@ -23,12 +23,14 @@ static struct can2040 cbus;
 static void
 can2040_cb(struct can2040 *cd, uint32_t notify, struct can2040_msg *msg)
 {
-    // for (int i = 0; i < ds_idx; ++i) {
-    //     printf("%0x\t", data_samples[i] & 0x3ff);
-    // }
-    // ds_idx = 0;
-    // printf("\nxfguo: can2040_cb(), notify: %d, msg: {id: %0x, dlc: %0x, data: %0x, data32: %0x}\n",
-    //        notify, msg->id, msg->dlc, msg->data, msg->data32);
+    if (notify == CAN2040_NOTIFY_RX)
+    {
+        printf("xfguo: recv msg: (id: %0x, size: %0x, data: %0x, %0x)\n", msg->id & 0x7ff, msg->dlc, msg->data32[0], msg->data32[1]);
+    } else if (notify == CAN2040_NOTIFY_TX) {
+        printf("xfguo: confirmed tx msg: (id: %0x, size: %0x, data: %0x, %0x)\n", msg->id & 0x7ff, msg->dlc, msg->data32[0], msg->data32[1]);
+    } else if (notify & CAN2040_NOTIFY_ERROR) {
+        printf("xfguo: error on msg: (id: %0x, size: %0x, data: %0x, %0x)\n", msg->id & 0x7ff, msg->dlc, msg->data32[0], msg->data32[1]);
+    }
 }
 
 uint32_t
@@ -67,9 +69,26 @@ int main() {
     const uint LED_PIN = PICO_DEFAULT_LED_PIN;
     gpio_init(LED_PIN);
     gpio_set_dir(LED_PIN, GPIO_OUT);
+
+    struct can2040_msg msg = {
+            .id = 2 | CAN2040_ID_EFF,
+            .dlc = 8,
+            .data32 = {
+                    0xefbeadde,
+                    0x12345678
+            }
+    };
+
     while (true) {
         gpio_put(LED_PIN, 1);
         sleep_ms(250);
+
+        if (can2040_check_transmit(&cbus)) {
+            can2040_transmit(&cbus, &msg);
+            msg.data32[1]++;
+            printf("Transmit %0x.%0x\n", msg.data32[0], msg.data32[1]);
+        }
+
         gpio_put(LED_PIN, 0);
         sleep_ms(250);
     }
